@@ -4,9 +4,169 @@
         <title>AutoGen Blog</title>
         <link>https://microsoft.github.io/autogen/blog</link>
         <description>AutoGen Blog</description>
-        <lastBuildDate>Mon, 06 Nov 2023 00:00:00 GMT</lastBuildDate>
+        <lastBuildDate>Mon, 20 Nov 2023 00:00:00 GMT</lastBuildDate>
         <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
         <generator>https://github.com/jpmonette/feed</generator>
+        <item>
+            <title><![CDATA[How to Assess Utility of LLM-powered Applications?]]></title>
+            <link>https://microsoft.github.io/autogen/blog/2023/11/20/AgentEval</link>
+            <guid>How to Assess Utility of LLM-powered Applications?</guid>
+            <pubDate>Mon, 20 Nov 2023 00:00:00 GMT</pubDate>
+            <description><![CDATA[Fig.1: A verification framework]]></description>
+            <content:encoded><![CDATA[<p><img src="img/agenteval-CQ.png" alt="Fig.1: A verification framework"/></p><p align="center"><em>Fig.1 illustrates the general flow of AgentEval</em></p><p><strong>TL;DR:</strong></p><ul><li>As a developer of an LLM-powered application, how can you assess the utility it brings to end users while helping them with their tasks?</li><li>To shed light on the question above, we introduce <code>AgentEval</code> — the first version of the framework to assess the utility of any LLM-powered application crafted to assist users in specific tasks.  AgentEval aims to simplify the evaluation process by automatically proposing a set of criteria tailored to the unique purpose of your application. This allows for a comprehensive assessment, quantifying the utility of your application against the suggested criteria.</li><li>We demonstrate how <code>AgentEval</code> work using <a href="https://microsoft.github.io/autogen/blog/2023/06/28/MathChat">math problems dataset</a> as an example in the <a href="https://github.com/microsoft/autogen/blob/main/notebook/agenteval_cq_math.ipynb">following notebook</a>. Any feedback would be useful for future development. Please contact us on our <a href="http://aka.ms/autogen-dc">Discord</a>.</li></ul><h2>Introduction</h2><p> AutoGen aims to simplify the development of LLM-powered multi-agent systems for various applications, ultimately making end users&#x27; lives easier by assisting with their tasks. Next, we all yearn to understand how our developed systems perform, their utility for users, and, perhaps most crucially, how we can enhance them. Directly evaluating multi-agent systems poses challenges as current approaches predominantly rely on success metrics – essentially, whether the agent accomplishes tasks. However, comprehending user interaction with a system involves far more than success alone. Take math problems, for instance; it&#x27;s not merely about the agent solving the problem. Equally significant is its ability to convey solutions based on various criteria, including completeness, conciseness, and the clarity of the provided explanation. Furthermore, success isn&#x27;t always clearly defined for every task.</p><p> Rapid advances in LLMs and multi-agent systems have brought forth many emerging capabilities that we&#x27;re keen on translating into tangible utilities for end users. We introduce the first version of <code>AgentEval</code> framework - a tool crafted to empower developers in swiftly gauging the utility of LLM-powered applications designed to help end users accomplish the desired task.</p><p><img src="img/tasks-taxonomy.png" alt="Fig.2: An overview of the tasks taxonomy"/></p><p align="center"><em>Fig. 2 provides  an overview of the tasks taxonomy</em></p><p>Let&#x27;s first look into an overview of the suggested task taxonomy that a multi-agent system can be designed for. In general, the tasks can be split into two types, where:</p><ul><li><em>Success is not clearly defined</em> - refer to instances when users utilize a system in an assistive manner, seeking suggestions rather than expecting the system to solve the task. For example, a user might request the system to generate an email. In many cases, this generated content serves as a template that the user will later edit. However, defining success precisely for such tasks is relatively complex.</li><li><em>Success is clearly defined</em> - refer to instances where we can clearly define whether a system solved the task or not. Consider agents that assist in accomplishing household tasks, where the definition of success is clear and measurable. This category can be further divided into two separate subcategories:<ul><li><em>The optimal solution exits</em> - these are tasks where only one solution is possible. For example, if you ask your assistant to turn on the light, the success of this task is clearly defined, and there is only one way to accomplish it.</li><li><em>Multiple solutions exist</em> - increasingly, we observe situations where multiple trajectories of agent behavior can lead to either success or failure. In such cases, it is crucial to differentiate between the various successful and unsuccessful trajectories. For example, when you ask the agent to suggest you a food recipe or tell you a joke.</li></ul></li></ul><p>In our <code>AgentEval</code> framework, we are currently focusing on tasks where <em>Success is clearly defined</em>. Next, we will introduce the suggeted framework.</p><h2><code>AgentEval</code> Framework</h2><p>Our previous research on <a href="https://github.com/microsoft/iglu-datasets">assistive agents in Minecraft</a> suggested that the most optimal way to obtain human judgments is to present humans with two agents side by side and ask for preferences. In this setup of pairwise comparison, humans can develop criteria to explain why they prefer the behavior of one agent over another. For instance, <em>&#x27;the first agent was faster in execution,&#x27;</em> or <em>&#x27;the second agent moves more naturally.&#x27;</em> So, the comparative nature led humans to come up with a list of criteria that helps to infer the utility of the task. With this idea in mind, we designed <code>AgentEval</code> (shown in Fig. 1), where we employ LLMs to help us understand, verify, and assess task <em>utility</em> for the multi-agent system. Namely:</p><ul><li>The goal of <code>CriticAgent</code> is to suggest the list of criteria (Fig. 1), that can be used to assess task utility. This is an example of how <code>CriticAgent</code> is defined using <code>Autogen</code>:</li></ul><pre><code class="language-python">critic = autogen.AssistantAgent(
+    name=&quot;critic&quot;,
+    llm_config={&quot;config_list&quot;: config_list},
+    system_message=&quot;&quot;&quot;You are a helpful assistant. You suggest criteria for evaluating different tasks. They should be distinguishable, quantifiable, and not redundant.
+    Convert the evaluation criteria into a dictionary where the keys are the criteria.
+    The value of each key is a dictionary as follows {&quot;description&quot;: criteria description, &quot;accepted_values&quot;: possible accepted inputs for this key}
+    Make sure the keys are criteria for assessing the given task. &quot;accepted_values&quot; include the acceptable inputs for each key that are fine-grained and preferably multi-graded levels. &quot;description&quot; includes the criterion description.
+    Return only the dictionary.&quot;&quot;&quot;
+)
+</code></pre><p>Next, the critic is given successful and failed examples of the task execution; then, it is able to return a list of criteria (Fig. 1). For reference, use the <a href="https://github.com/microsoft/autogen/blob/main/notebook/agenteval_cq_math.ipynb">following notebook</a>.</p><ul><li>The goal of <code>QuantifierAgent</code> is to quantify each of the suggested criteria (Fig. 1), providing us with an idea of the utility of this system for the given task. Here is an example of how it can be defined:</li></ul><pre><code class="language-python">quantifier = autogen.AssistantAgent(
+    name=&quot;quantifier&quot;,
+    llm_config={&quot;config_list&quot;: config_list},
+    system_message = &quot;&quot;&quot;You are a helpful assistant. You quantify the output of different tasks based on the given criteria.
+    The criterion is given in a dictionary format where each key is a distinct criteria.
+    The value of each key is a dictionary as follows {&quot;description&quot;: criteria description , &quot;accepted_values&quot;: possible accepted inputs for this key}
+    You are going to quantify each of the criteria for a given task based on the task description.
+    Return a dictionary where the keys are the criteria and the values are the assessed performance based on accepted values for each criteria.
+    Return only the dictionary.&quot;&quot;&quot;
+
+)
+</code></pre><h2><code>AgentEval</code> Results based on Math Problems Dataset</h2><p> As an example, after running CriticAgent, we obtained the following criteria to verify the results for math problem dataset:</p><table><thead><tr><th>Criteria</th><th>Description</th><th>Accepted Values</th></tr></thead><tbody><tr><td>Problem Interpretation</td><td>Ability to correctly interpret the problem</td><td>[&quot;completely off&quot;, &quot;slightly relevant&quot;, &quot;relevant&quot;, &quot;mostly accurate&quot;, &quot;completely accurate&quot;]</td></tr><tr><td>Mathematical Methodology</td><td>Adequacy of the chosen mathematical or algorithmic methodology for the question</td><td>[&quot;inappropriate&quot;, &quot;barely adequate&quot;, &quot;adequate&quot;, &quot;mostly effective&quot;, &quot;completely effective&quot;]</td></tr><tr><td>Calculation Correctness</td><td>Accuracy of calculations made and solutions given</td><td>[&quot;completely incorrect&quot;, &quot;mostly incorrect&quot;, &quot;neither&quot;, &quot;mostly correct&quot;, &quot;completely correct&quot;]</td></tr><tr><td>Explanation Clarity</td><td>Clarity and comprehensibility of explanations, including language use and structure</td><td>[&quot;not at all clear&quot;, &quot;slightly clear&quot;, &quot;moderately clear&quot;, &quot;very clear&quot;, &quot;completely clear&quot;]</td></tr><tr><td>Code Efficiency</td><td>Quality of code in terms of efficiency and elegance</td><td>[&quot;not at all efficient&quot;, &quot;slightly efficient&quot;, &quot;moderately efficient&quot;, &quot;very efficient&quot;, &quot;extremely efficient&quot;]</td></tr><tr><td>Code Correctness</td><td>Correctness of the provided code</td><td>[&quot;completely incorrect&quot;, &quot;mostly incorrect&quot;, &quot;partly correct&quot;, &quot;mostly correct&quot;, &quot;completely correct&quot;]</td></tr></tbody></table><p>Then, after running QuantifierAgent, we obtained the results presented in Fig. 3, where you can see three models:</p><ul><li>AgentChat</li><li>ReAct</li><li>GPT-4 Vanilla Solver</li></ul><p>Lighter colors represent estimates for failed cases, and brighter colors show how discovered criteria were quantified.</p><p><img src="img/math-problems-plot.png" alt="Fig.3: Results based on overall mathp roblems dataset `_s` stands for successful cases, `_f` - stands for failed cases"/></p><p align="center"><em>Fig.3 presents results based on overall mathproblems datase `_s` stands for successful cases, `_f` - stands for failed cases</em></p><p>We note that while applying agentEval to math problems, the agent was not exposed to any ground truth information about the problem. As such, this figure illustrates an estimated performance of the three different agents, namely, Autogen (blue), Gpt-4 (red), and ReAct (green). We observe that by comparing the performance of any of the three agents in successful cases (dark bars of any color) versus unsuccessful cases (lighter version of the same bar), we note that AgentEval was able to assign higher quantification to successful cases than that of failed ones. This observation verifies AgentEval&#x27;s ability for task utility prediction. Additionally, AgentEval allows us to go beyond just a binary definition of success, enabling a more in-depth comparison between successful and failed cases.</p><p>It&#x27;s important not only to identify what is not working but also to recognize what and why actually went well.</p><h2>Limitations and Future Work</h2><p>The current implementation of <code>AgentEval</code> has a number of limitations which are planning to overcome in the future:</p><ul><li>The list of criteria varies per run (unless you store a seed). We would recommend to run <code>CriticAgent</code> at least two times, and pick criteria you think is important for your domain.</li><li>The results of the <code>QuantifierAgent</code> can vary with each run, so we recommend conducting multiple runs to observe the extent of result variations.</li></ul><p>To mitigate the limitations mentioned above, we are working on VerifierAgent, whose goal is to stabilize the results and provide additional explanations.</p><h2>Summary</h2><p><code>CriticAgent</code> and <code>QuantifierAgent</code> can be applied to the logs of any type of application, providing you with an in-depth understanding of the utility your solution brings to the user for a given task.</p><p>We would love to hear about how AgentEval works for your application. Any feedback would be useful for future development. Please contact us on our <a href="http://aka.ms/autogen-dc">Discord</a>.</p><h2>Previous Research</h2><pre><code>@InProceedings{pmlr-v176-kiseleva22a,
+  title = &quot;Interactive Grounded Language Understanding in a Collaborative Environment: IGLU 2021&quot;,
+  author = &quot;Kiseleva, Julia and Li, Ziming and Aliannejadi, Mohammad and Mohanty, Shrestha and ter Hoeve, Maartje and Burtsev, Mikhail and Skrynnik, Alexey and Zholus, Artem and Panov, Aleksandr and Srinet, Kavya and Szlam, Arthur and Sun, Yuxuan and Hofmann, Katja and C{\^o}t{\&#x27;e}, Marc-Alexandre and Awadallah, Ahmed and Abdrazakov, Linar and Churin, Igor and Manggala, Putra and Naszadi, Kata and van der Meer, Michiel and Kim, Taewoon&quot;,
+  booktitle = &quot;Proceedings of the NeurIPS 2021 Competitions and Demonstrations Track&quot;,
+  pages = &quot;146--161&quot;,
+  year = 2022,
+  editor = &quot;Kiela, Douwe and Ciccone, Marco and Caputo, Barbara&quot;,
+  volume = 176,
+  series = &quot;Proceedings of Machine Learning Research&quot;,
+  month = &quot;06--14 Dec&quot;,
+  publisher = &quot;PMLR&quot;,
+  pdf =      {https://proceedings.mlr.press/v176/kiseleva22a/kiseleva22a.pdf},
+  url =      {https://proceedings.mlr.press/v176/kiseleva22a.html}.
+}
+</code></pre><pre><code>@InProceedings{pmlr-v220-kiseleva22a,
+  title = &quot;Interactive Grounded Language Understanding in a Collaborative Environment: Retrospective on Iglu 2022 Competition&quot;,
+  author = &quot;Kiseleva, Julia and Skrynnik, Alexey and Zholus, Artem and Mohanty, Shrestha and Arabzadeh, Negar and C\^{o}t\&#x27;e, Marc-Alexandre and Aliannejadi, Mohammad and Teruel, Milagro and Li, Ziming and Burtsev, Mikhail and ter Hoeve, Maartje and Volovikova, Zoya and Panov, Aleksandr and Sun, Yuxuan and Srinet, Kavya and Szlam, Arthur and Awadallah, Ahmed and Rho, Seungeun and Kwon, Taehwan and Wontae Nam, Daniel and Bivort Haiek, Felipe and Zhang, Edwin and Abdrazakov, Linar and Qingyam, Guo and Zhang, Jason and Guo, Zhibin&quot;,
+  booktitle = &quot;Proceedings of the NeurIPS 2022 Competitions Track&quot;,
+  pages = &quot;204--216&quot;,
+  year = 2022,
+  editor = &quot;Ciccone, Marco and Stolovitzky, Gustavo and Albrecht, Jacob&quot;,
+  volume = 220,
+  series = &quot;Proceedings of Machine Learning Research&quot;,
+  month = &quot;28 Nov--09 Dec&quot;,
+  publisher = &quot;PMLR&quot;,
+  pdf = &quot;https://proceedings.mlr.press/v220/kiseleva22a/kiseleva22a.pdf&quot;,
+  url = &quot;https://proceedings.mlr.press/v220/kiseleva22a.html&quot;.
+}
+</code></pre>]]></content:encoded>
+        </item>
+        <item>
+            <title><![CDATA[AutoGen Meets GPTs]]></title>
+            <link>https://microsoft.github.io/autogen/blog/2023/11/13/OAI-assistants</link>
+            <guid>AutoGen Meets GPTs</guid>
+            <pubDate>Mon, 13 Nov 2023 00:00:00 GMT</pubDate>
+            <description><![CDATA[OpenAI Assistant]]></description>
+            <content:encoded><![CDATA[<p><img src="img/teaser.jpg" alt="OpenAI Assistant"/></p><p align="center"><em>AutoGen enables collaboration among multiple ChatGPTs for complex tasks.</em></p><h2>TLDR</h2><p>OpenAI assistants are now integrated into AutoGen via <a href="https://github.com/microsoft/autogen/blob/main/autogen/agentchat/contrib/gpt_assistant_agent.py"><code>GPTAssistantAgent</code></a>.
+This enables multiple OpenAI assistants, which form the backend of the now popular GPTs, to collaborate and tackle complex tasks.
+Checkout example notebooks for reference:</p><ul><li><a href="https://github.com/microsoft/autogen/blob/main/notebook/agentchat_oai_assistant_twoagents_basic.ipynb">Basic example</a></li><li><a href="https://github.com/microsoft/autogen/blob/main/notebook/agentchat_oai_code_interpreter.ipynb">Code interpreter</a></li><li><a href="https://github.com/microsoft/autogen/blob/main/notebook/agentchat_oai_assistant_function_call.ipynb">Function calls</a></li></ul><h2>Introduction</h2><p>Earlier last week, OpenAI introduced <a href="https://openai.com/blog/introducing-gpts">GPTs</a>, giving users ability to create custom ChatGPTs tailored for them.
+<em>But what if these individual GPTs could collaborate to do even more?</em>
+Fortunately, because of AutoGen, this is now a reality!
+AutoGen has been pioneering agents and supporting <a href="https://aka.ms/autogen-pdf">multi-agent workflows</a> since earlier this year, and now (starting with version 0.2.0b5) we are introducing compatibility with the <a href="https://openai.com/blog/introducing-gpts">Assistant API</a>, which is currently in beta preview.</p><p>To accomplish this, we&#x27;ve added a new (experimental) agent called the <code>GPTAssistantAgent</code> that
+lets you seamlessly add these new OpenAI assistants into AutoGen-based multi-agent workflows.
+This integration shows great potential and synergy, and we plan to continue enhancing it.</p><h2>Installation</h2><pre><code class="language-bash">pip install pyautogen==0.2.0b5
+</code></pre><h2>Basic Example</h2><p>Here&#x27;s a basic example that uses a <code>UserProxyAgent</code> to allow an interface
+with the <code>GPTAssistantAgent</code>.</p><p>First, import the new agent and setup <code>config_list</code>:</p><pre><code class="language-python">from autogen import config_list_from_json
+from autogen.agentchat.contrib.gpt_assistant_agent import GPTAssistantAgent
+from autogen import UserProxyAgent
+
+config_list = config_list_from_json(&quot;OAI_CONFIG_LIST&quot;)
+</code></pre><p>Then simply define the OpenAI assistant agent and give it the task!</p><pre><code class="language-python"># creates new assistant using Assistant API
+gpt_assistant = GPTAssistantAgent(
+    name=&quot;assistant&quot;,
+    llm_config={
+        &quot;config_list&quot;: config_list,
+        &quot;assistant_id&quot;: None
+    })
+
+user_proxy = UserProxyAgent(name=&quot;user_proxy&quot;,
+    code_execution_config={
+        &quot;work_dir&quot;: &quot;coding&quot;
+    },
+    human_input_mode=&quot;NEVER&quot;)
+
+user_proxy.initiate_chat(gpt_assistant, message=&quot;Print hello world&quot;)
+</code></pre><p><code>GPTAssistantAgent</code> supports both creating new OpenAI assistants or reusing existsing assistants
+(e.g, by providing an <code>assistant_id</code>).</p><h2>Code Interpreter Example</h2><p><code>GPTAssistantAgent</code> allows you to specify an OpenAI tools
+(e.g., function calls, code interpreter, etc). The example below enables an assistant
+that can use OpenAI code interpreter to solve tasks.</p><pre><code class="language-python"># creates new assistant using Assistant API
+gpt_assistant = GPTAssistantAgent(
+    name=&quot;assistant&quot;,
+    llm_config={
+        &quot;config_list&quot;: config_list,
+        &quot;assistant_id&quot;: None,
+        &quot;tools&quot;: [
+            {
+                &quot;type&quot;: &quot;code_interpreter&quot;
+            }
+        ],
+    })
+
+user_proxy = UserProxyAgent(name=&quot;user_proxy&quot;,
+    code_execution_config={
+        &quot;work_dir&quot;: &quot;coding&quot;
+    },
+    human_input_mode=&quot;NEVER&quot;)
+
+user_proxy.initiate_chat(gpt_assistant, message=&quot;Print hello world&quot;)
+</code></pre><p>Checkout more examples <a href="https://github.com/microsoft/autogen/tree/main/notebook">here</a>.</p><h2>Limitations and Future Work</h2><ul><li>Group chat managers using GPT assistant are pending.</li><li>GPT assistants with multimodal capabilities haven&#x27;t been released yet but we are committed to support them.</li></ul><h2>Acknowledgements</h2><p><code>GPTAssistantAgent</code> was made possible through collaboration with
+<a href="https://github.com/IANTHEREAL">@IANTHEREAL</a>,
+<a href="https://leoljl.github.io">Jiale Liu</a>,
+<a href="https://github.com/kevin666aa">Yiran Wu</a>,
+<a href="https://qingyun-wu.github.io/">Qingyun Wu</a>,
+<a href="https://www.microsoft.com/en-us/research/people/chiw/">Chi Wang</a>, and many other AutoGen maintainers.</p>]]></content:encoded>
+        </item>
+        <item>
+            <title><![CDATA[EcoAssistant - Using LLM Assistants More Accurately and Affordably]]></title>
+            <link>https://microsoft.github.io/autogen/blog/2023/11/09/EcoAssistant</link>
+            <guid>EcoAssistant - Using LLM Assistants More Accurately and Affordably</guid>
+            <pubDate>Thu, 09 Nov 2023 00:00:00 GMT</pubDate>
+            <description><![CDATA[system]]></description>
+            <content:encoded><![CDATA[<p><img src="img/system.png" alt="system"/></p><p><strong>TL;DR:</strong></p><ul><li>Introducing the <strong>EcoAssistant</strong>, which is designed to solve user queries more accurately and affordably.</li><li>We show how to let the LLM assistant agent leverage external API to solve user query.</li><li>We show how to reduce the cost of using GPT models via <strong>Assistant Hierachy</strong>.</li><li>We show how to leverage the idea of Retrieval-augmented Generation (RAG) to improve the success rate via <strong>Solution Demonstration</strong>.</li></ul><h2>EcoAssistant</h2><p>In this blog, we introduce the <strong>EcoAssistant</strong>, a system built upon AutoGen with the goal of solving user queries more accurately and affordably.</p><h3>Problem setup</h3><p>Recently, users have been using conversational LLMs such as ChatGPT for various queries.
+Reports indicate that 23% of ChatGPT user queries are for knowledge extraction purposes.
+Many of these queries require knowledge that is external to the information stored within any pre-trained large language models (LLMs).
+These tasks can only be completed by generating code to fetch necessary information via external APIs that contain the requested information.
+In the table below, we show three types of user queries that we aim to address in this work.</p><table><thead><tr><th>Dataset</th><th>API</th><th>Example query</th></tr></thead><tbody><tr><td>Places</td><td><a href="https://developers.google.com/maps/documentation/places/web-service/overview">Google Places</a></td><td>I’m looking for a 24-hour pharmacy in Montreal, can you find one for me?</td></tr><tr><td>Weather</td><td><a href="https://www.weatherapi.com">Weather API</a></td><td>What is the current cloud coverage in Mumbai, India?</td></tr><tr><td>Stock</td><td><a href="https://www.alphavantage.co/documentation/">Alpha Vantage Stock API</a></td><td>Can you give me the opening price of Microsoft for the month of January 2023?</td></tr></tbody></table><h3>Leveraging external APIs</h3><p>To address these queries, we first build a <strong>two-agent system</strong> based on AutoGen,
+where the first agent is a <strong>LLM assistant agent</strong> (<code>AssistantAgent</code> in AutoGen) that is responsible for proposing and refining the code and
+the second agent is a <strong>code executor agent</strong> (<code>UserProxyAgent</code> in AutoGen) that would extract the generated code and execute it, forwarding the output back to the LLM assistant agent.
+A visualization of the two-agent system is shown below.</p><p><img src="img/chat.png" alt="chat"/></p><p>To instruct the assistant agent to leverage external APIs, we only need to add the API name/key dictionary at the beginning of the initial message.
+The template is shown below, where the red part is the information of APIs and black part is user query.</p><p><img src="img/template.png" alt="template"/></p><p>Importantly, we don&#x27;t want to reveal our real API key to the assistant agent for safety concerns.
+Therefore, we use a <strong>fake API key</strong> to replace the real API key in the initial message.
+In particular, we generate a random token (e.g., <code>181dbb37</code>) for each API key and replace the real API key with the token in the initial message.
+Then, when the code executor execute the code, the fake API key would be automatically replaced by the real API key.</p><h3>Solution Demonstration</h3><p>In most practical scenarios, queries from users would appear sequentially over time.
+Our <strong>EcoAssistant</strong> leverages past success to help the LLM assistants address future queries via <strong>Solution Demonstration</strong>.
+Specifically, whenever a query is deemed successfully resolved by user feedback, we capture and store the query and the final generated code snippet.
+These query-code pairs are saved in a specialized vector database. When new queries appear, <strong>EcoAssistant</strong> retrieves the most similar query from the database, which is then appended with the associated code to the initial prompt for the new query, serving as a demonstration.
+The new template of initial message is shown below, where the blue part corresponds to the solution demonstration.</p><p><img src="img/template-demo.png" alt="template"/></p><p>We found that this utilization of past successful query-code pairs improves the query resolution process with fewer iterations and enhances the system&#x27;s performance.</p><h3>Assistant Hierarchy</h3><p>LLMs usually have different prices and performance, for example, GPT-3.5-turbo is much cheaper than GPT-4 but also less accurate.
+Thus, we propose the <strong>Assistant Hierarchy</strong> to reduce the cost of using LLMs.
+The core idea is that we use the cheaper LLMs first and only use the more expensive LLMs when necessary.
+By this way, we are able to reduce the reliance on expensive LLMs and thus reduce the cost.
+In particular, given multiple LLMs, we initiate one assistant agent for each and start the conversation with the most cost-effective LLM assistant.
+If the conversation between the current LLM assistant and the code executor concludes without successfully resolving the query, <strong>EcoAssistant</strong> would then restart the conversation with the next more expensive LLM assistant in the hierarchy.
+We found that this strategy significantly reduces costs while still effectively addressing queries.</p><h3>A Synergistic Effect</h3><p>We found that the <strong>Assistant Hierarchy</strong> and <strong>Solution Demonstration</strong> of <strong>EcoAssistant</strong> have a synergistic effect.
+Because the query-code database is shared by all LLM assistants, even without specialized design,
+the solution from more powerful LLM assistant (e.g., GPT-4) could be later retrieved to guide weaker LLM assistant (e.g., GPT-3.5-turbo).
+Such a synergistic effect further improves the performance and reduces the cost of <strong>EcoAssistant</strong>.</p><h3>Experimental Results</h3><p>We evaluate <strong>EcoAssistant</strong> on three datasets: Places, Weather, and Stock. When comparing it with a single GPT-4 assistant, we found that <strong>EcoAssistant</strong> achieves a higher success rate with a lower cost as shown in the figure below.
+For more details about the experimental results and other experiments, please refer to our <a href="https://arxiv.org/abs/2310.03046">paper</a>.</p><p><img src="img/results.png" alt="exp"/></p><h2>Further reading</h2><p>Please refer to our <a href="https://arxiv.org/abs/2310.03046">paper</a> and <a href="https://github.com/JieyuZ2/EcoAssistant">codebase</a> for more details about <strong>EcoAssistant</strong>.</p><p>If you find this blog useful, please consider citing:</p><pre><code class="language-bibtex">@article{zhang2023ecoassistant,
+  title={EcoAssistant: Using LLM Assistant More Affordably and Accurately},
+  author={Zhang, Jieyu and Krishna, Ranjay and Awadallah, Ahmed H and Wang, Chi},
+  journal={arXiv preprint arXiv:2310.03046},
+  year={2023}
+}
+</code></pre>]]></content:encoded>
+        </item>
         <item>
             <title><![CDATA[Multimodal with GPT-4V and LLaVA]]></title>
             <link>https://microsoft.github.io/autogen/blog/2023/11/06/LMM-Agent</link>
@@ -702,7 +862,7 @@ cd FastChat
 </code></pre><h2>Initiate server</h2><p>First, launch the controller</p><pre><code class="language-bash">python -m fastchat.serve.controller
 </code></pre><p>Then, launch the model worker(s)</p><pre><code class="language-bash">python -m fastchat.serve.model_worker --model-path chatglm2-6b
 </code></pre><p>Finally, launch the RESTful API server</p><pre><code class="language-bash">python -m fastchat.serve.openai_api_server --host localhost --port 8000
-</code></pre><p>Normally this will work. However, if you encounter error like <a href="https://github.com/lm-sys/FastChat/issues/1641">this</a>, commenting out all the lines containing <code>finish_reason</code> in <code>fastchat/protocol/api_protocal.py</code> and <code>fastchat/protocol/openai_api_protocol.py</code> will fix the problem. The modified code looks like:</p><pre><code class="language-python">class CompletionResponseChoice(BaseModel):
+</code></pre><p>Normally this will work. However, if you encounter error like <a href="https://github.com/lm-sys/FastChat/issues/1641">this</a>, commenting out all the lines containing <code>finish_reason</code> in <code>fastchat/protocol/api_protocol.py</code> and <code>fastchat/protocol/openai_api_protocol.py</code> will fix the problem. The modified code looks like:</p><pre><code class="language-python">class CompletionResponseChoice(BaseModel):
     index: int
     text: str
     logprobs: Optional[int] = None
